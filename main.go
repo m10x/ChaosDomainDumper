@@ -73,6 +73,7 @@ func main() {
 		}
 
 		if !lastRun.IsZero() && !entryUpdated.After(lastRun) {
+			fmt.Printf("No update for '%s' [%s]\n", entry.Name, entry.Platform)
 			continue
 		}
 
