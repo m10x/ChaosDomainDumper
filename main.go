@@ -82,7 +82,7 @@ func main() {
 		os.MkdirAll(filepath.Dir(domainDir), 0755)
 		os.MkdirAll(tempDir, 0755)
 
-		fmt.Printf("Update erkannt bei '%s' [%s]\n", entry.Name, entry.Platform)
+		fmt.Printf("Checke nach Update für '%s' [%s]\n", entry.Name, entry.Platform)
 
 		zipData, err := downloadFile(entry.URL)
 		if err != nil {
@@ -95,11 +95,17 @@ func main() {
 		if !lastRun.IsZero() {
 			date := time.Now().Format("2006-01-02")
 			updateDir := filepath.Join(platform, "Updates"+"_"+date, name)
-			os.MkdirAll(updateDir, 0755)
 
 			newFiles, newFQDNs := copyNewDomains(tempDir, domainDir, updateDir)
-			totalNewFiles += newFiles
-			totalNewFQDNs += newFQDNs
+			if newFiles > 0 || newFQDNs > 0 {
+				fmt.Println("newFiles", newFiles)
+				fmt.Println("newFQDNs", newFQDNs)
+
+				totalNewFiles += newFiles
+				totalNewFQDNs += newFQDNs
+			} else {
+				os.RemoveAll(updateDir)
+			}
 		}
 
 		fileCount, fqdnCount := countDomainsAndFQDNs(tempDir)
@@ -228,20 +234,90 @@ func copyNewDomains(newDir, oldDir, updateDir string) (int, int) {
 
 		relPath, _ := filepath.Rel(newDir, path)
 		oldPath := filepath.Join(oldDir, relPath)
+		destPath := filepath.Join(updateDir, relPath)
 
 		if _, err := os.Stat(oldPath); os.IsNotExist(err) {
-			destPath := filepath.Join(updateDir, relPath)
+			// Datei existiert nicht im oldDir, komplett kopieren
 			os.MkdirAll(filepath.Dir(destPath), 0755)
 			copyFile(path, destPath)
 			newFileCount++
 			fqdnLines, _ := countLines(path)
 			newFQDNCount += fqdnLines
+		} else {
+			// Datei existiert in beiden Verzeichnissen, Zeilen vergleichen
+			newLines, err := getNewLines(path, oldPath)
+			if err == nil && len(newLines) > 0 {
+				os.MkdirAll(filepath.Dir(destPath), 0755)
+				f, err := os.Create(destPath)
+				if err == nil {
+					for _, line := range newLines {
+						f.WriteString(line + "\n")
+					}
+					f.Close()
+					newFileCount++
+					newFQDNCount += len(newLines)
+				}
+			}
 		}
-
 		return nil
 	})
 
 	return newFileCount, newFQDNCount
+}
+
+// Hilfsfunktion: Gibt alle Zeilen zurück, die in fileA, aber nicht in fileB sind
+func getNewLines(fileA, fileB string) ([]string, error) {
+	aLines, err := readLines(fileA)
+	if err != nil {
+		return nil, err
+	}
+	bLines, err := readLines(fileB)
+	if err != nil {
+		return nil, err
+	}
+	bSet := make(map[string]struct{}, len(bLines))
+	for _, line := range bLines {
+		bSet[line] = struct{}{}
+	}
+	var diff []string
+	for _, line := range aLines {
+		if _, found := bSet[line]; !found {
+			diff = append(diff, line)
+		}
+	}
+	return diff, nil
+}
+
+// Hilfsfunktion: Liest alle Zeilen einer Datei als Slice
+func readLines(filePath string) ([]string, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var lines []string
+	buf := make([]byte, 4096)
+	var partial string
+	for {
+		n, err := f.Read(buf)
+		if n > 0 {
+			chunk := partial + string(buf[:n])
+			parts := strings.Split(chunk, "\n")
+			partial = parts[len(parts)-1]
+			lines = append(lines, parts[:len(parts)-1]...)
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return lines, err
+		}
+	}
+	if partial != "" {
+		lines = append(lines, partial)
+	}
+	return lines, nil
 }
 
 func copyFile(src, dst string) error {
