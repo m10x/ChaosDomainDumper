@@ -17,6 +17,7 @@ const (
 	indexURL    = "https://chaos-data.projectdiscovery.io/index.json"
 	dataDir     = "data"
 	lastRunFile = "data/last_run.txt"
+	version     = "1.0.0"
 )
 
 type Entry struct {
@@ -32,6 +33,7 @@ type Entry struct {
 }
 
 func main() {
+	fmt.Printf("ChaosDomainDumper version %s\n", version)
 	os.MkdirAll(dataDir, 0755)
 
 	var lastRun time.Time
