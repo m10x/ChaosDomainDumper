@@ -41,14 +41,18 @@ func main() {
 
 	resp, err := http.Get(indexURL)
 	if err != nil {
+		fmt.Printf("Error fetching indexURL: %v\n", err)
 		panic(err)
 	}
 	defer resp.Body.Close()
+	fmt.Printf("indexURL '%s' successfully fetched (Status: %d)\n", indexURL, resp.StatusCode)
 
 	var entries []Entry
 	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
+		fmt.Printf("Error decoding indexURL response: %v\n", err)
 		panic(err)
 	}
+	fmt.Printf("index.json contains %d entries\n", len(entries))
 
 	var (
 		totalPrograms   int
@@ -62,7 +66,7 @@ func main() {
 	for _, entry := range entries {
 		entryUpdated, err := time.Parse(time.RFC3339, entry.LastUpdated)
 		if err != nil {
-			fmt.Println("Ungültiges Datum für:", entry.Name)
+			fmt.Println("Invalid date for:", entry.Name)
 			continue
 		}
 
@@ -82,11 +86,11 @@ func main() {
 		os.MkdirAll(filepath.Dir(domainDir), 0755)
 		os.MkdirAll(tempDir, 0755)
 
-		fmt.Printf("Checke nach Update für '%s' [%s]\n", entry.Name, entry.Platform)
+		fmt.Printf("Checking for update for '%s' [%s]\n", entry.Name, entry.Platform)
 
 		zipData, err := downloadFile(entry.URL)
 		if err != nil {
-			fmt.Println("Download-Fehler:", err)
+			fmt.Println("Download error:", err)
 			continue
 		}
 
@@ -121,14 +125,14 @@ func main() {
 
 	os.WriteFile(lastRunFile, []byte(time.Now().Format(time.RFC3339)), 0644)
 
-	// Statistik
+	// Statistics
 	fmt.Println("──────────────────────────────")
-	fmt.Printf("Verarbeitete Programme:          %d\n", totalPrograms)
-	fmt.Printf("Programme mit Updates:           %d\n", updatedPrograms)
-	fmt.Printf("Second-Level Domains (Dateien):  %d\n", totalFiles)
-	fmt.Printf("FQDNs insgesamt (Zeilen):        %d\n", totalFQDNs)
-	fmt.Printf("Neue Dateien (Updates):          %d\n", totalNewFiles)
-	fmt.Printf("Neue FQDNs (Updates):            %d\n", totalNewFQDNs)
+	fmt.Printf("Processed programs:             %d\n", totalPrograms)
+	fmt.Printf("Programs with updates:          %d\n", updatedPrograms)
+	fmt.Printf("Second-level domains (files):   %d\n", totalFiles)
+	fmt.Printf("Total FQDNs (lines):            %d\n", totalFQDNs)
+	fmt.Printf("New files (updates):            %d\n", totalNewFiles)
+	fmt.Printf("New FQDNs (updates):            %d\n", totalNewFQDNs)
 }
 
 func countDomainsAndFQDNs(root string) (int, int) {
@@ -192,7 +196,7 @@ func downloadFile(url string) ([]byte, error) {
 func extractZip(zipData []byte, outDir string) {
 	r, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
 	if err != nil {
-		fmt.Println("Fehler beim Entpacken:", err)
+		fmt.Println("Error extracting zip:", err)
 		return
 	}
 
