@@ -14,11 +14,47 @@ import (
 )
 
 const (
-	indexURL    = "https://chaos-data.projectdiscovery.io/index.json"
-	dataDir     = "data"
-	lastRunFile = "data/last_run.txt"
-	version     = "1.0.0"
+	indexURL = "https://chaos-data.projectdiscovery.io/index.json"
+	version  = "1.1.0"
 )
+
+// ANSI color codes
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBlue   = "\033[34m"
+	colorPurple = "\033[35m"
+	colorCyan   = "\033[36m"
+	colorWhite  = "\033[37m"
+	colorBold   = "\033[1m"
+)
+
+// Helper functions for colored output
+func printInfo(format string, args ...interface{}) {
+	fmt.Printf(colorCyan+format+colorReset+"\n", args...)
+}
+
+func printSuccess(format string, args ...interface{}) {
+	fmt.Printf(colorGreen+format+colorReset+"\n", args...)
+}
+
+func printWarning(format string, args ...interface{}) {
+	fmt.Printf(colorYellow+format+colorReset+"\n", args...)
+}
+
+func printError(format string, args ...interface{}) {
+	fmt.Printf(colorRed+format+colorReset+"\n", args...)
+}
+
+func printHeader(format string, args ...interface{}) {
+	fmt.Printf(colorBold+colorPurple+format+colorReset+"\n", args...)
+}
+
+func printStats(format string, args ...interface{}) {
+	fmt.Printf(colorBlue+format+colorReset+"\n", args...)
+}
 
 type Entry struct {
 	Name        string `json:"name"`
@@ -33,28 +69,22 @@ type Entry struct {
 }
 
 func main() {
-	fmt.Printf("ChaosDomainDumper version %s\n", version)
-	os.MkdirAll(dataDir, 0755)
-
-	var lastRun time.Time
-	if b, err := os.ReadFile(lastRunFile); err == nil {
-		lastRun, _ = time.Parse(time.RFC3339, string(b))
-	}
+	printHeader("ChaosDomainDumper version %s", version)
 
 	resp, err := http.Get(indexURL)
 	if err != nil {
-		fmt.Printf("Error fetching indexURL: %v\n", err)
+		printError("Error fetching indexURL: %v", err)
 		panic(err)
 	}
 	defer resp.Body.Close()
-	fmt.Printf("indexURL '%s' successfully fetched (Status: %d)\n", indexURL, resp.StatusCode)
+	printSuccess("indexURL '%s' successfully fetched (Status: %d)", indexURL, resp.StatusCode)
 
 	var entries []Entry
 	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
-		fmt.Printf("Error decoding indexURL response: %v\n", err)
+		printError("Error decoding indexURL response: %v", err)
 		panic(err)
 	}
-	fmt.Printf("index.json contains %d entries\n", len(entries))
+	printInfo("index.json contains %d entries", len(entries))
 
 	var (
 		totalPrograms   int
@@ -66,17 +96,6 @@ func main() {
 	)
 
 	for _, entry := range entries {
-		entryUpdated, err := time.Parse(time.RFC3339, entry.LastUpdated)
-		if err != nil {
-			fmt.Println("Invalid date for:", entry.Name)
-			continue
-		}
-
-		if !lastRun.IsZero() && !entryUpdated.After(lastRun) {
-			fmt.Printf("No update for '%s' [%s]\n", entry.Name, entry.Platform)
-			continue
-		}
-
 		platform := sanitizeName(entry.Platform)
 		if platform == "" {
 			platform = "selfhosted"
@@ -89,30 +108,27 @@ func main() {
 		os.MkdirAll(filepath.Dir(domainDir), 0755)
 		os.MkdirAll(tempDir, 0755)
 
-		fmt.Printf("Checking for update for '%s' [%s]\n", entry.Name, entry.Platform)
+		printInfo("Checking for update for '%s' [%s]", entry.Name, entry.Platform)
 
 		zipData, err := downloadFile(entry.URL)
 		if err != nil {
-			fmt.Println("Download error:", err)
+			printError("Download error: %v", err)
 			continue
 		}
 
 		extractZip(zipData, tempDir)
 
-		if !lastRun.IsZero() {
-			date := time.Now().Format("2006-01-02")
-			updateDir := filepath.Join(platform, "Updates"+"_"+date, name)
+		date := time.Now().Format("2006-01-02")
+		updateDir := filepath.Join(platform, "Updates"+"_"+date, name)
 
-			newFiles, newFQDNs := copyNewDomains(tempDir, domainDir, updateDir)
-			if newFiles > 0 || newFQDNs > 0 {
-				fmt.Println("newFiles", newFiles)
-				fmt.Println("newFQDNs", newFQDNs)
+		newFiles, newFQDNs := copyNewDomains(tempDir, domainDir, updateDir)
+		if newFiles > 0 || newFQDNs > 0 {
+			printSuccess("Found updates: %d new files, %d new FQDNs", newFiles, newFQDNs)
 
-				totalNewFiles += newFiles
-				totalNewFQDNs += newFQDNs
-			} else {
-				os.RemoveAll(updateDir)
-			}
+			totalNewFiles += newFiles
+			totalNewFQDNs += newFQDNs
+		} else {
+			os.RemoveAll(updateDir)
 		}
 
 		fileCount, fqdnCount := countDomainsAndFQDNs(tempDir)
@@ -126,16 +142,16 @@ func main() {
 		os.Rename(tempDir, domainDir)
 	}
 
-	os.WriteFile(lastRunFile, []byte(time.Now().Format(time.RFC3339)), 0644)
-
 	// Statistics
-	fmt.Println("──────────────────────────────")
-	fmt.Printf("Processed programs:             %d\n", totalPrograms)
-	fmt.Printf("Programs with updates:          %d\n", updatedPrograms)
-	fmt.Printf("Second-level domains (files):   %d\n", totalFiles)
-	fmt.Printf("Total FQDNs (lines):            %d\n", totalFQDNs)
-	fmt.Printf("New files (updates):            %d\n", totalNewFiles)
-	fmt.Printf("New FQDNs (updates):            %d\n", totalNewFQDNs)
+	printHeader("──────────────────────────────")
+	printHeader("FINAL STATISTICS")
+	printHeader("──────────────────────────────")
+	printStats("Processed programs:             %d", totalPrograms)
+	printStats("Programs with updates:          %d", updatedPrograms)
+	printStats("Second-level domains (files):   %d", totalFiles)
+	printStats("Total FQDNs (lines):            %d", totalFQDNs)
+	printStats("New files (updates):            %d", totalNewFiles)
+	printStats("New FQDNs (updates):            %d", totalNewFQDNs)
 }
 
 func countDomainsAndFQDNs(root string) (int, int) {
@@ -199,7 +215,7 @@ func downloadFile(url string) ([]byte, error) {
 func extractZip(zipData []byte, outDir string) {
 	r, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
 	if err != nil {
-		fmt.Println("Error extracting zip:", err)
+		printError("Error extracting zip: %v", err)
 		return
 	}
 
@@ -234,8 +250,12 @@ func copyNewDomains(newDir, oldDir, updateDir string) (int, int) {
 	newFileCount := 0
 	newFQDNCount := 0
 
+	printInfo("Processing: %s -> %s -> %s", newDir, oldDir, updateDir)
 	filepath.WalkDir(newDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil {
+			printWarning("Error processing path: %v", err)
+			return nil
+		} else if d.IsDir() {
 			return nil
 		}
 
@@ -250,6 +270,7 @@ func copyNewDomains(newDir, oldDir, updateDir string) (int, int) {
 			newFileCount++
 			fqdnLines, _ := countLines(path)
 			newFQDNCount += fqdnLines
+			printSuccess("New file: %s (%d FQDNs)", relPath, fqdnLines)
 		} else {
 			// Datei existiert in beiden Verzeichnissen, Zeilen vergleichen
 			newLines, err := getNewLines(path, oldPath)
@@ -263,6 +284,7 @@ func copyNewDomains(newDir, oldDir, updateDir string) (int, int) {
 					f.Close()
 					newFileCount++
 					newFQDNCount += len(newLines)
+					printSuccess("Updated file: %s (%d new FQDNs)", relPath, len(newLines))
 				}
 			}
 		}

@@ -11,6 +11,4 @@ A Go tool to download, extract, and track updates of bug bounty domain lists fro
 - Organizes data by platform:
   - `Domains/` → full list of domains per program
   - `Updates/` → only newly added domains (on update)
-- Detects updates based on the `last_updated` timestamp
-- Stores the last run timestamp in `data/last_run.txt`
 - Displays statistics for programs, domain files, and FQDN entries
